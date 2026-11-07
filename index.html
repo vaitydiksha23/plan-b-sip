@@ -100,7 +100,15 @@ const ENTRY = {
   pause: 'Tapped pause or cancel in the app',
   open: 'Opened Plan B themselves'
 };
+const ENTRY_LABEL = {
+  reminder: 'I got a reminder before my next SIP debit',
+  failed: 'My SIP payment failed',
+  pause: 'I tapped pause or cancel in the app',
+  open: 'I opened Plan B myself'
+};
+const DURATION = {one_month:'About a month', two_months:'About two months', three_plus_months:'Three months or more', unknown:'Not sure'};
 const NUMWORD = {1:'one',2:'two',3:'three'};
+const SOURCE_NOTE = 'Dates and rules on this screen are calculated by fixed logic from Groww Help (checked 7 Nov 2026), not by the AI. Confirm them in your Groww app.';
 const CUTOFF_NOTE = "Groww's cut-off is 2 working days before your instalment; we've added a day for holidays.";
 const MAX_AI_CALLS = 10;
 
@@ -112,7 +120,7 @@ const S = {
   tm: null,
   reminders: []
 };
-function freshTM(){ return { entry:null, failedWhen:'today', nonpay:0, text:'', followups:[], askedBoundary:false, result:null, checks:null, pii:false, fail:null, choice:null, lowerMonths:null, restart:null }; }
+function freshTM(){ return { entry:null, failedWhen:'today', failReason:'money', nonpay:0, nonpayUnsure:false, duration:null, text:'', followups:[], askedBoundary:false, result:null, checks:null, pii:false, fail:null, choice:null, lowerMonths:null, restart:null }; }
 
 // ================= Utilities =================
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -183,26 +191,35 @@ function ctx(){
   const payBy=addWorkingDays(failDate,1);
   return {next, actBy, tooLate, cancelBy, cancelLate, payBy};
 }
+function defaultDuration(r){
+  if(r.category==='one_off') return 'one_month';
+  if(r.category==='multi_month') return ['two_months','three_plus_months'].includes(r.expected_duration) ? r.expected_duration : 'unknown';
+  return 'unknown';
+}
 function routeOptions(){
-  const r=S.tm.result, n=S.tm.nonpay, o=[];
+  const n=S.tm.nonpay, o=[];
   const blockSkip = n>=2;
-  if(S.tm.entry==='failed') o.push(S.tm.failedWhen==='earlier' ? 'one_time' : 'pay_now');
-  const cat=r.category, dur=r.expected_duration;
-  if(cat==='one_off'){
+  if(S.tm.entry==='failed'){
+    o.push(S.tm.failReason==='money' && S.tm.failedWhen!=='earlier' ? 'pay_now' : 'check_dashboard');
+  }
+  const d = S.tm.duration || 'unknown';
+  if(d==='one_month'){
     if(!blockSkip) o.push('skip');
     o.push('lower');
     if(S.setup.clash && S.setup.clash.flag) o.push('date');
-  } else if(cat==='multi_month'){
-    if(dur==='two_months'){ if(n===0) o.push('skip_two'); else if(!blockSkip) o.push('skip'); o.push('lower'); }
-    else { o.push('lower'); o.push('break'); }
+  } else if(d==='two_months'){
+    if(n===0) o.push('skip_two'); else if(!blockSkip) o.push('skip');
+    o.push('lower');
+  } else if(d==='three_plus_months'){
+    o.push('lower'); o.push('break');
   } else {
     if(!blockSkip) o.push('skip');
     o.push('lower');
     if(blockSkip) o.push('break');
   }
-  // Plan B choice first, after any payment-recovery option
+  // Plan B choice first, after any payment-recovery step
   const pref=planPref();
-  const head=o.filter(k=>k==='pay_now'||k==='one_time');
+  const head=o.filter(k=>k==='pay_now'||k==='check_dashboard');
   let rest=o.filter(k=>!head.includes(k));
   if(pref){
     const isPref=k=> pref==='skip' ? (k==='skip'||k==='skip_two') : k==='lower';
@@ -241,7 +258,10 @@ async function callAI(task, payload){
 function addReminder(title, date, desc){ S.reminders.push({title,date,desc}); return S.reminders.length-1; }
 function reminderBtn(title, date, desc, label){
   const i=addReminder(title,date,desc);
-  return `<button class="btn secondary" onclick="downloadICS(${i})">${esc(label)}</button>`;
+  const p=n=>String(n).padStart(2,'0');
+  const ds=d=>`${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
+  const g=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${ds(date)}/${ds(addDays(date,1))}&details=${encodeURIComponent(desc)}`;
+  return `<div class="row"><a class="btn secondary" href="${g}" target="_blank" rel="noopener">${esc(label)} (Google Calendar)</a><button class="btn secondary" onclick="downloadICS(${i})">Other calendar</button></div>`;
 }
 function downloadICS(i){
   const r=S.reminders[i]; if(!r) return;
@@ -264,7 +284,7 @@ function checkPanel(checks){
     if(c.id==='C4' && !c.pass) mark='? Not sure yet';
     return `<li>${esc(mark)}: ${esc(c.label)}</li>`;
   }).join('');
-  return `<div class="checks"><strong>Quality checks on this AI response</strong><ul>${rows}</ul><div class="muted small">Checked by fixed rules on every response. If a check fails, Plan B shows a safe fallback instead.</div></div>`;
+  return `<div class="checks"><strong>Quality checks on this AI response</strong><ul>${rows}</ul><div class="muted small">Checked by fixed rules on every response. If a check fails, Plan B shows a safe fallback instead. Dates and Groww rules never come from the AI.</div></div>`;
 }
 function aiBlock(text, who){
   if(!text) return '';
@@ -333,11 +353,10 @@ SCREENS.summary = () => {
   ${st.summaryNote ? `<div class="note">${esc(st.summaryNote)}</div>` : ''}
   ${piiBanner(st.pii)}
   <div id="sumView">${st.summaryAI ? aiBlock(st.summary,'Your month, as Plan B understood it (AI)') : `<div class="card">${esc(st.summary)}</div>`}</div>
-  <div id="sumEdit" style="display:none"><label class="f" for="sumText">Correct anything that's wrong</label><textarea id="sumText">${esc(fillText(st.summary))}</textarea></div>
   ${st.summaryAI ? checkPanel(st.summaryChecks) : '<p class="muted small">No AI was used for this summary.</p>'}
   ${clashHtml}
-  <button class="btn" id="sumYes" onclick="confirmSummary()">Yes, this is right</button>
-  <button class="btn secondary" id="sumEditBtn" onclick="editSummary()">Edit it</button>`;
+  <button class="btn" onclick="go('rule')">Yes, this is right</button>
+  <button class="btn secondary" onclick="go('setup')">Change my answers</button>`;
 };
 
 SCREENS.rule = () => {
@@ -366,10 +385,11 @@ SCREENS.entry = () => {
   return `
   <h1>Demo: choose how you arrived here</h1>
   <p class="muted">In the real app, Plan B would open at one of these moments. Pick one to try it.</p>
-  ${Object.entries(ENTRY).map(([k,w])=>`<label class="choice"><input type="radio" name="entry" value="${k}" ${t.entry===k?'checked':''} onchange="const np=document.getElementById('np'); if(np) S.tm.nonpay=parseInt(np.value,10)||0; S.tm.entry=this.value; render()"><span>${esc(w.replace('Opened Plan B themselves','I opened Plan B myself'))}</span></label>`).join('')}
-  ${t.entry==='failed' ? `<label class="f" for="fw">When did it fail?</label><select id="fw"><option value="today" ${t.failedWhen==='today'?'selected':''}>Today</option><option value="yesterday" ${t.failedWhen==='yesterday'?'selected':''}>Yesterday</option><option value="earlier" ${t.failedWhen==='earlier'?'selected':''}>Earlier than that</option></select>` : ''}
+  ${Object.entries(ENTRY).map(([k,w])=>`<label class="choice"><input type="radio" name="entry" value="${k}" ${t.entry===k?'checked':''} onchange="readNonpay(); S.tm.entry=this.value; render()"><span>${esc(ENTRY_LABEL[k])}</span></label>`).join('')}
+  ${t.entry==='failed' ? `<label class="f" for="fw">When did it fail?</label><select id="fw"><option value="today" ${t.failedWhen==='today'?'selected':''}>Today</option><option value="yesterday" ${t.failedWhen==='yesterday'?'selected':''}>Yesterday</option><option value="earlier" ${t.failedWhen==='earlier'?'selected':''}>Earlier than that</option></select>
+  <label class="f" for="fr">Why did it fail?</label><select id="fr"><option value="money" ${t.failReason==='money'?'selected':''}>The money wasn't in my account</option><option value="autopay" ${t.failReason==='autopay'?'selected':''}>An AutoPay or bank problem</option><option value="unsure" ${t.failReason==='unsure'?'selected':''}>Not sure</option></select>` : ''}
   <label class="f" for="np">How many instalments in a row have been skipped or missed so far${t.entry==='failed'?', including this failed one':''}?</label>
-  <select id="np">${[0,1,2].map(n=>`<option value="${n}" ${t.nonpay==n?'selected':''}>${n}</option>`).join('')}</select>
+  <select id="np">${[0,1,2].map(n=>`<option value="${n}" ${(!t.nonpayUnsure && t.nonpay==n)?'selected':''}>${n}</option>`).join('')}<option value="unsure" ${t.nonpayUnsure?'selected':''}>Not sure</option></select>
   ${needDates ? `<div class="row"><div><label class="f" for="sipDay2">Your SIP date</label><select id="sipDay2"><option value="">Choose</option>${daysOptions(28,null)}</select></div><div><label class="f" for="salDay2">Salary date</label><select id="salDay2"><option value="">Choose</option>${daysOptions(31,null)}</select></div></div><p class="muted small">Groww lets you pick a SIP date from the 1st to the 28th, so those are the dates shown here.</p>` : ''}
   <div class="err" id="err"></div>
   <button class="btn" onclick="saveEntry()">Continue</button>`;
@@ -412,24 +432,25 @@ function optionCard(k, c){
   const actLeaves = c.tooLate ? late : `<div class="leaves">${leaf(c.actBy,'Act by')}${leaf(c.next,'Instalment date')}</div><p class="muted small">${esc(CUTOFF_NOTE)}</p>`;
   const choose = `<button class="btn" onclick="choose('${k}')">Choose this</button>`;
   const D = {
-    pay_now: `<h2>Pay this instalment with Pay Now</h2><p>Pays the failed instalment, so this month still counts and nothing is skipped.</p>
+    pay_now: `<h2>Pay this instalment with Pay Now</h2><p>Pays the failed instalment, so this month still counts and nothing is skipped. Your regular SIP date doesn't change.</p>
       <div class="leaves">${leaf(c.payBy,'Pay by')}</div><p class="muted small">Pay Now is available for 2 working days after a payment fails because of low balance. The date shown is a day earlier, to be safe.</p>
       ${steps(['Open your Mutual Funds dashboard in Groww.','Find the Pay Now option on the missed instalment.','Pay it before the option disappears.'])}${link(HELP.missed,'Groww Help: pay a missed instalment')}`,
-    one_time: `<h2>Pay this month as a one-time payment</h2><p>Pay Now may no longer be available. You can pay this month as a one-time payment into the same SIP's fund instead. This isn't possible in every fund; the app will show if it is.</p>
-      ${steps(['Open your Mutual Funds dashboard in Groww.','Tap the fund where the SIP payment was missed.','Choose One-time and pay for this month.'])}${link(HELP.missed,'Groww Help: pay a missed instalment')}`,
+    check_dashboard: `<h2>Check your Groww dashboard first</h2><p>If the payment failed because the balance was short, Groww shows a Pay Now option on your dashboard for 2 working days. If it failed because of an AutoPay or bank problem, Pay Now may not appear, and Groww Help explains how to fix AutoPay.</p>
+      <p>If this instalment can't be paid, this month counts as missed. Your regular SIP date doesn't change, and your next instalment is on ${esc(fmtLong(c.next))}.</p>
+      ${link(HELP.missed,'Groww Help: pay a missed instalment')}`,
     skip: `<h2>Skip this month's instalment</h2><p>Nothing is taken for this instalment. Your SIP stays active and continues the month after. Groww charges nothing for skipping.</p>
       ${actLeaves}${n===1?'<div class="note">One instalment is already skipped or missed. After this skip, one more in a row would cancel your SIP automatically, so the next one needs to go through.</div>':''}
       ${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP.','Tap Skip next to the upcoming instalment and confirm.'])}${link(HELP.skip,'Groww Help: skip an instalment')}`,
     skip_two: `<h2>Skip this month and next month</h2><p>Two instalments without a payment, then back to normal. Groww lets you skip one at a time, so you request the second skip after this month's instalment date has passed.</p>
       ${actLeaves}<div class="note">A third skipped or missed instalment in a row would cancel your SIP automatically, so the instalment after these two needs to go through.</div>
       ${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP and skip the upcoming instalment.','After that date passes, skip the next one the same way.'])}${link(HELP.skipLimits,'Groww Help: skipping limits')}`,
-    lower: `<h2>Lower your amount for a while</h2><p>Your SIP keeps running at a smaller amount that you choose. Plan B never suggests an amount; the lowest amount your fund allows is shown in the app. You'll pick how long, and Plan B gives you the date to change it back.</p>
+    lower: `<h2>Lower your amount for a while</h2><p>Your SIP keeps running at a smaller amount that you choose. Plan B never suggests an amount; the lowest amount your fund allows is shown in the app. You'll pick how long, and Plan B gives you the date to change it back. You'll change it back yourself in Groww; Plan B can't do it for you.</p>
       ${actLeaves}${n>=2?'<div class="note">Two instalments in a row are already skipped or missed. The next one needs to go through to keep your SIP active, so a smaller amount you can manage is the safer choice here.</div>':''}
       ${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, enter the amount you choose, and save.'])}${link(HELP.edit,'Groww Help: change SIP amount or date')}`,
     date: `<h2>Move your SIP date</h2><p>Move the debit to a few days after your salary usually arrives, so the money is there when the instalment is taken.</p>
       ${actLeaves}${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, pick the new date and save.'])}${link(HELP.edit,'Groww Help: change SIP date')}`,
-    break: `<h2>Take a planned break, then restart</h2><p>Cancel the SIP now and start it again on a date you choose. Money already invested stays invested. Your first instalment after restarting comes at least 30 days after you restart.</p>
-      ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe.</p>`}
+    break: `<h2>Take a planned break, then restart</h2><p>Cancel the SIP now and start a new one on a date you choose. Money already invested stays invested. Plan B won't restart your SIP for you. Your first instalment after restarting comes at least 30 days after you restart.</p>
+      ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe. Groww shows whether cancellation is available for your next instalment.</p>`}
       ${link(HELP.cancel,'Groww Help: cancel a SIP')}`
   };
   return `<div class="card ${mine?'mine':''}">${tag}${D[k]}${choose}</div>`;
@@ -443,14 +464,21 @@ SCREENS.options = () => {
   }
   const blocked = (S.tm.nonpay>=2) ? `<div class="note">Two instalments in a row are already skipped or missed. One more in a row would cancel your SIP automatically, so skipping isn't offered here. ${link(HELP.skipLimits,'Groww Help')}</div>` : '';
   const planBlocked = (S.tm.nonpay>=2 && planPref()==='skip') ? `<p class="muted small">Your Plan B was to skip, but a skip now would cancel your SIP, so Plan B is showing other options.</p>` : '';
+  const unsure = S.tm.nonpayUnsure ? `<div class="note">You weren't sure how many instalments in a row were skipped or missed, so Plan B assumes 2 to be safe. To check: in Groww, go to Mutual Funds, then SIPs, and open your SIP to see recent instalments.</div>` : '';
+  const dur = S.tm.duration || 'unknown';
+  const durSel = `<div class="card"><label class="f" for="dur" style="margin-top:0">How long do you expect money to be tight?</label>
+    <select id="dur" onchange="setDuration(this.value)">${Object.entries(DURATION).map(([v,w])=>`<option value="${v}" ${dur===v?'selected':''}>${w}</option>`).join('')}</select>
+    <p class="muted small" style="margin:8px 0 0">${S.tm.checks ? "Plan B's guess from what you wrote. Change it if it's wrong, and the options below update." : 'Choose the closest answer, and the options below update.'}</p></div>`;
   return `
   <h1>Here's what fits this month</h1>
   ${piiBanner(S.tm.pii)}
   ${aiBlock(r.reflection)}
   ${fit}
   ${checkPanel(S.tm.checks)}
-  ${blocked}${planBlocked}
+  ${durSel}
+  ${unsure}${blocked}${planBlocked}
   ${opts.map(k=>optionCard(k,c)).join('')}
+  <p class="muted small">${esc(SOURCE_NOTE)}</p>
   <button class="btn secondary" onclick="restart()">Start over</button>`;
 };
 
@@ -482,18 +510,19 @@ SCREENS.close = () => {
       <label class="f" for="lm">For how many instalments?</label>
       <select id="lm" onchange="S.tm.lowerMonths=parseInt(this.value,10);render()">${[1,2,3].map(x=>`<option value="${x}" ${m==x?'selected':''}>${x}</option>`).join('')}</select>
       <div class="leaves">${c.tooLate?'':leaf(c.actBy,'Lower by')}${leaf(raiseBy,'Change back by')}${leaf(fullAgain,'Usual amount from')}</div>
-      <p>Your SIP keeps running at the amount you choose, then goes back to your usual amount from ${esc(fmtLong(fullAgain))}, if you change it back by ${esc(fmtLong(raiseBy))}.</p>
+      <p>Your SIP keeps running at the amount you choose. To go back to your usual amount from ${esc(fmtLong(fullAgain))}, change it back yourself in Groww by ${esc(fmtLong(raiseBy))}. Plan B can't do it for you.</p>
       ${reminderBtn('Change my SIP back to my usual amount', raiseBy, 'Plan B reminder: change your SIP back to your usual amount in Groww today.', 'Add a reminder to change it back')}`;
   } else if(k==='pay_now'){
     const nxt = debitAfter(c.next,0);
     h=`<h1>Your plan: pay this instalment now</h1>
       <div class="leaves">${leaf(c.payBy,'Pay by')}${leaf(nxt,'Next instalment')}</div>
-      <p>Once it's paid, this month counts and your SIP carries on as normal.</p>
+      <p>Once it's paid, this month counts and your SIP carries on as normal. Your regular SIP date doesn't change.</p>
       ${reminderBtn('Pay my missed SIP instalment', c.payBy, 'Plan B reminder: use Pay Now in Groww today.', 'Add a reminder to pay')}`;
-  } else if(k==='one_time'){
-    h=`<h1>Your plan: pay this month as a one-time payment</h1>
+  } else if(k==='check_dashboard'){
+    h=`<h1>Your plan: check your dashboard</h1>
       <div class="leaves">${leaf(c.next,'Next instalment')}</div>
-      <p>If one-time payment isn't available for your fund, your SIP still continues with the next instalment.</p>`;
+      <p>Look for Pay Now on your Groww dashboard. If it isn't there, this month counts as missed, and your SIP continues with the next instalment. Your regular SIP date doesn't change.</p>
+      ${reminderBtn('SIP instalment coming up', addDays(c.next,-3), 'Plan B reminder: your next SIP instalment is coming up. Make sure the money is in your account.', 'Add a reminder before the next instalment')}`;
   } else if(k==='date'){
     h=`<h1>Your plan: move your SIP date</h1>
       <div class="leaves">${c.tooLate?'':leaf(c.actBy,'Change by')}</div>
@@ -512,7 +541,7 @@ SCREENS.breakPlan = () => {
   if(rs){
     const first=addDays(rs,30);
     restartHtml=`<div class="leaves">${leaf(rs,'Restart on')}${leaf(first,'First instalment from')}</div>
-      <p>On ${esc(fmtLong(rs))}, start the SIP again in Groww. Your first instalment will come on or after ${esc(fmtLong(first))}.</p>
+      <p>Plan B won't restart your SIP. On ${esc(fmtLong(rs))}, you'll create a new SIP in Groww. Your first instalment will come on or after ${esc(fmtLong(first))}; Groww shows the exact date before you confirm.</p>
       ${steps(['On your restart date, open the same fund in Groww.','Tap Start SIP and choose your amount and date.','Set up AutoPay if the app asks.'])}
       ${reminderBtn('Restart my SIP in Groww', rs, 'Plan B reminder: today is the restart date you chose for your SIP.', 'Add a reminder to restart')}`;
   }
@@ -524,7 +553,7 @@ SCREENS.breakPlan = () => {
   ${aiBlock(S.tm.result ? S.tm.result.reflection : '')}
   ${checkPanel(S.tm.checks)}
   <div class="card"><h2>Cancel now</h2>
-    ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe.</p>`}
+    ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe. Groww shows whether cancellation is available for your next instalment.</p>`}
     ${steps(['In Groww, go to Mutual Funds, then SIPs.','Choose the SIP and tap Cancel SIP.','Pick a reason and confirm.'])}
     <p>Money you've already invested stays invested. Cancelling only stops future instalments.</p>
     ${link(HELP.cancel,'Groww Help: cancel a SIP')}</div>
@@ -544,7 +573,7 @@ SCREENS.stop = () => {
   ${aiBlock(S.tm.result ? S.tm.result.reflection : '')}
   ${checkPanel(S.tm.checks)}
   <div class="card">
-    ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe.</p>`}
+    ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe. Groww shows whether cancellation is available for your next instalment.</p>`}
     ${steps(['In Groww, go to Mutual Funds, then SIPs.','Choose the SIP and tap Cancel SIP.','Pick a reason and confirm.'])}
     <p>Money you've already invested stays invested. Cancelling only stops future instalments.</p>
     ${link(HELP.cancel,'Groww Help: cancel a SIP')}
@@ -572,7 +601,8 @@ SCREENS.fallback = () => {
     <p>${link('https://investor.sebi.gov.in','SEBI investor education')}</p>
     <p>${link('https://www.amfiindia.com','AMFI')}</p></div>
   ${checkPanel(f.checks)}
-  ${isScope ? `<button class="btn" onclick="S.tm.text='';go('describe')">Describe your SIP situation instead</button>`
+  ${isScope ? `<button class="btn" onclick="optionsWithoutAI()">See what each SIP option does</button>
+               <button class="btn secondary" onclick="S.tm.text='';go('describe')">Describe your situation instead</button>`
             : `<button class="btn" onclick="optionsWithoutAI()">Show my options without AI</button>
                <button class="btn secondary" onclick="S.tm.result=null;S.tm.checks=null;go('stop')">I want to stop this SIP</button>`}
   <button class="btn secondary" onclick="restart()">Start over</button>`;
@@ -600,19 +630,8 @@ async function saveSetup(){
   loading('Reading what you wrote');
   const r=await callAI('summary',{reliability:REL[rel.value], payments:paymentWords()||'none', upcoming:S.setup.upcoming});
   if(r.ok){ S.setup.summary=r.result.summary; S.setup.summaryAI=true; S.setup.summaryChecks=r.checks; S.setup.pii=!!r.pii; }
-  else { S.setup.summary=templateSummary(true); S.setup.summaryNote="Plan B couldn't summarise your note safely, so here is a plain version. You can edit it."; S.setup.summaryChecks=r.checks||null; S.setup.pii=!!r.pii; }
+  else { S.setup.summary=templateSummary(true); S.setup.summaryNote="Plan B couldn't summarise your note safely, so here is a plain version."; S.setup.summaryChecks=r.checks||null; S.setup.pii=!!r.pii; }
   go('summary');
-}
-function editSummary(){
-  document.getElementById('sumView').style.display='none';
-  document.getElementById('sumEdit').style.display='block';
-  document.getElementById('sumEditBtn').style.display='none';
-  document.getElementById('sumYes').textContent='Save and continue';
-}
-function confirmSummary(){
-  const ed=document.getElementById('sumEdit');
-  if(ed && ed.style.display==='block'){ S.setup.summary=document.getElementById('sumText').value.trim(); S.setup.summaryAI=false; }
-  go('rule');
 }
 function saveRule(){
   const r=document.querySelector('input[name=rule]:checked');
@@ -625,7 +644,8 @@ function saveEntry(){
   if(!e){ showErr('Choose how you arrived here.'); return; }
   S.tm.entry=e.value;
   const fw=document.getElementById('fw'); if(fw) S.tm.failedWhen=fw.value;
-  S.tm.nonpay=parseInt(document.getElementById('np').value,10)||0;
+  readNonpay();
+  const fr=document.getElementById('fr'); if(fr) S.tm.failReason=fr.value;
   if(!S.setup.sipDay){
     const sd=parseInt(document.getElementById('sipDay2').value,10), sl=parseInt(document.getElementById('salDay2').value,10);
     if(!sd || !sl){ showErr('Choose your SIP date and salary date, so Plan B can work out the right dates.'); return; }
@@ -665,6 +685,7 @@ function decideNext(){
   if(r.category==='unclear'){ r.category='uncertain'; r.expected_duration='unknown'; }
   if(r.category==='wants_to_stop'){ go('stop'); return; }
   if(r.category==='planned_break'){ go('breakPlan'); return; }
+  S.tm.duration = defaultDuration(r);
   go('options');
 }
 function setBoundary(cat){
@@ -679,9 +700,15 @@ function setRestart(v){
   if(!v){ S.tm.restart=null; render(); return; }
   const [y,m,d]=v.split('-').map(Number); S.tm.restart=new Date(y,m-1,d); render();
 }
+function readNonpay(){
+  const np=document.getElementById('np'); if(!np) return;
+  if(np.value==='unsure'){ S.tm.nonpayUnsure=true; S.tm.nonpay=2; }
+  else { S.tm.nonpayUnsure=false; S.tm.nonpay=parseInt(np.value,10)||0; }
+}
+function setDuration(v){ S.tm.duration=v; render(); }
 function optionsWithoutAI(){
   S.tm.result={category:'uncertain', confidence:'low', expected_duration:'unknown', followup_question:'', reflection:'', plan_b_fit:'not_applicable', plan_b_fit_reason:''};
-  S.tm.checks=null; go('options');
+  S.tm.checks=null; S.tm.duration='unknown'; go('options');
 }
 
 render();
