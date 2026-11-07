@@ -103,13 +103,34 @@ async function callClaude(model, system, userText) {
   return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
 }
 
+// Extract the FIRST complete JSON object, ignoring any text before or after it
+// (including text that itself contains braces, such as an explanation of placeholders).
 function parseJSON(raw) {
   if (!raw) return null;
-  const clean = raw.replace(/```json|```/g, '').trim();
-  const a = clean.indexOf('{');
-  const b = clean.lastIndexOf('}');
-  if (a === -1 || b === -1) return null;
-  try { return JSON.parse(clean.slice(a, b + 1)); } catch (e) { return null; }
+  const clean = raw.replace(/```json|```/g, '');
+  let start = clean.indexOf('{');
+  while (start !== -1) {
+    let depth = 0, inStr = false, escNext = false;
+    for (let i = start; i < clean.length; i++) {
+      const ch = clean[i];
+      if (inStr) {
+        if (escNext) escNext = false;
+        else if (ch === '\\') escNext = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(clean.slice(start, i + 1)); } catch (e) { break; }
+        }
+      }
+    }
+    start = clean.indexOf('{', start + 1);
+  }
+  return null;
 }
 
 function textChecks(texts) {
@@ -207,7 +228,7 @@ What they wrote:
     const t = textChecks([out.reflection, out.plan_b_fit_reason, out.followup_question]);
     checks = { ...t };
     if (!t.c2 && attempts < 2) {
-      note = '\n\nYour previous reply broke the rule about digits, dates, month or weekday names, amounts or placeholders. Rewrite your text following the rules. Reply with only the JSON object.';
+      note = '\n\nYour previous reply broke the rule about digits, dates, month or weekday names, amounts or placeholders. Rewrite your text following the rules. Reply with only the JSON object: no explanation, no notes, nothing before or after it.';
       continue;
     }
     break;
