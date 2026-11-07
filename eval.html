@@ -93,7 +93,7 @@ function score(c, r){
   const failed = (r.checks||[]).filter(x=>!x.pass && x.id!=='C4').map(x=>x.id).join(' ');
   return {id, exp, got, conf: r.ok ? r.result.confidence : '', match, miss, failed,
     attempts: r.attempts||'', pii: !!r.pii,
-    text: r.ok ? (r.result.reflection || r.result.followup_question || '') : ('fallback: '+(r.reason||'')),
+    text: r.ok ? (r.result.reflection || r.result.followup_question || '') : ('fallback: '+(r.reason||'') + (r.raw_preview ? ' | raw: '+r.raw_preview : '') + (r.detail ? ' | '+r.detail : '')),
     raw: r};
 }
 
