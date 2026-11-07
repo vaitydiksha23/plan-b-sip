@@ -15,8 +15,8 @@ const PLACEHOLDERS = ['{sip_date}', '{salary_date}', '{next_debit_date}', '{act_
 const MONTHS = /\b(january|february|march|april|june|july|august|september|october|november|december|jan|feb|apr|jun|jul|aug|sept|oct|nov|dec)\b/i;
 const WEEKDAYS = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
 const CURRENCY = /(₹|\brs\.?(?=\s|\d|$)|\brupees?\b|\binr\b|\blakhs?\b|\bcrores?\b)/i;
-const FUND_WORDS = /\b(funds?|mutual|nifty|sensex|index|small ?caps?|mid ?caps?|large ?caps?|flexi ?caps?|elss|etfs?|stocks?|equity|portfolio|nav|returns?|amc|sbi|hdfc|icici|axis|nippon|parag|quant|kotak|mirae|motilal|uti|dsp|birla|bandhan|edelweiss)\b/i;
-const ADVICE = /(you should (invest|buy|sell|switch|move)|i('d| would)? recommend|better returns|good time to|the market will|best (option|place) to invest|invest (in|instead))/i;
+const FUND_WORDS = /\b(funds?|mutual|nifty|sensex|index|small ?caps?|mid ?caps?|large ?caps?|flexi ?caps?|elss|etfs?|stocks?|equity|portfolio|nav|amc|sbi|hdfc|icici|axis|nippon|parag|quant|kotak|mirae|motilal|uti|dsp|birla|bandhan|edelweiss)\b/i;
+const ADVICE = /(you should (invest|buy|sell|switch|move)|i('d| would)? recommend|(your|the|good|high|higher|better|low|lower) returns|returns (on|from)|good time to|the market will|best (option|place) to invest|invest (in|instead))/i;
 const FEAR = /(lose everything|you('|’)?ll lose|you will lose|hurry|urgent|immediately|act now|right away|don'?t miss|miss out|regret|too late|last chance|panic|crash|you must|you have to|don'?t stop|do not stop|shouldn'?t stop|keep investing|stay invested|reconsider|are you sure|think again|losing out)/i;
 
 const RULES_TEXT = `Hard rules for every piece of text you write:
