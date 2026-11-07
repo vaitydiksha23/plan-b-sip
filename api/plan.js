@@ -136,13 +136,26 @@ function checkList({ c1 = true, c2 = true, c3 = true, c7 = true, confidence = nu
   ];
 }
 
+const SYNONYMS = {
+  oneoff: 'one_off', one_off: 'one_off', one_time: 'one_off',
+  multimonth: 'multi_month', multi_month: 'multi_month', multiple_months: 'multi_month',
+  planned_break: 'planned_break', break: 'planned_break', take_a_break: 'planned_break',
+  wants_to_stop: 'wants_to_stop', stop: 'wants_to_stop', want_to_stop: 'wants_to_stop',
+  out_of_scope: 'out_of_scope', outofscope: 'out_of_scope',
+  uncertain: 'uncertain', unclear: 'unclear'
+};
+function norm(v) {
+  return String(v || '').toLowerCase().trim().replace(/[\s\-]+/g, '_').replace(/[^a-z_]/g, '');
+}
 function pick(v, list, fallback) {
-  const s = String(v || '').toLowerCase().trim();
-  return list.includes(s) ? s : fallback;
+  const s = norm(v);
+  if (list.includes(s)) return s;
+  if (SYNONYMS[s] && list.includes(SYNONYMS[s])) return SYNONYMS[s];
+  return fallback;
 }
 
 // ---------- Tasks ----------
-async function classify(p, model) {
+async function classify(p, model, debug) {
   const main = maskPII(p.user_text);
   const followups = (Array.isArray(p.followups) ? p.followups.slice(0, 2) : []).map(f => ({
     q: String(f.q || '').slice(0, 300),
@@ -169,12 +182,14 @@ What they wrote:
   let checks = null;
   let attempts = 0;
   let formatOk = false;
+  let lastRaw = '';
 
   while (attempts < 2) {
     attempts++;
     const raw = await callClaude(model, CLASSIFY_SYSTEM, userText + note);
+    lastRaw = raw;
     const j = parseJSON(raw);
-    if (!j || !CATEGORIES.includes(String(j.category || '').toLowerCase().trim())) {
+    if (!j || pick(j.category, CATEGORIES, null) === null) {
       formatOk = false;
       note = '\n\nYour previous reply was not valid. Reply with only the JSON object in the required format.';
       continue;
@@ -199,7 +214,9 @@ What they wrote:
   }
 
   if (!formatOk) {
-    return { ok: false, reason: 'format', attempts, pii, checks: checkList({ c7: false, pii }) };
+    const r = { ok: false, reason: 'format', attempts, pii, checks: checkList({ c7: false, pii }) };
+    if (debug) r.raw_preview = String(lastRaw).slice(0, 300);
+    return r;
   }
   const list = checkList({ ...checks, confidence: out.confidence, category: out.category, pii });
   if (!checks.c1 || !checks.c2 || !checks.c3) {
@@ -262,13 +279,14 @@ module.exports = async function handler(req, res) {
   // Model override only for the eval page, protected by a passcode.
   let model = DEFAULT_MODEL;
   const pass = process.env.EVAL_PASS;
-  if (body.model && pass && req.headers['x-eval-pass'] === pass && MODELS[body.model]) {
+  const isEval = !!(pass && req.headers['x-eval-pass'] === pass);
+  if (isEval && body.model && MODELS[body.model]) {
     model = MODELS[body.model];
   }
 
   try {
     if (body.task === 'classify') {
-      res.status(200).json(await classify(body.payload || {}, model));
+      res.status(200).json(await classify(body.payload || {}, model, isEval));
       return;
     }
     if (body.task === 'summary') {
