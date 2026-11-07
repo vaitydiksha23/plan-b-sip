@@ -566,6 +566,7 @@ SCREENS.fallback = () => {
   return `
   <h1>${isScope ? "That's outside what Plan B does" : "Plan B can't answer that safely"}</h1>
   <p>${esc(msgs[f.reason]||msgs.error)}</p>
+  ${f.detail ? `<p class="muted small">Technical detail: ${esc(f.detail)}</p>` : ''}
   <div class="card"><p><strong>Official information</strong></p>
     <p>${link(HELP.general,'Groww Help: Mutual Funds')}</p>
     <p>${link('https://investor.sebi.gov.in','SEBI investor education')}</p>
