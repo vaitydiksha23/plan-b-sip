@@ -573,7 +573,8 @@ SCREENS.fallback = () => {
     <p>${link('https://www.amfiindia.com','AMFI')}</p></div>
   ${checkPanel(f.checks)}
   ${isScope ? `<button class="btn" onclick="S.tm.text='';go('describe')">Describe your SIP situation instead</button>`
-            : `<button class="btn" onclick="optionsWithoutAI()">Show my options without AI</button>`}
+            : `<button class="btn" onclick="optionsWithoutAI()">Show my options without AI</button>
+               <button class="btn secondary" onclick="S.tm.result=null;S.tm.checks=null;go('stop')">I want to stop this SIP</button>`}
   <button class="btn secondary" onclick="restart()">Start over</button>`;
 };
 
