@@ -207,13 +207,6 @@ a{color:var(--accent);font-weight:500}
 .sheet-grip{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
 .sheet h2{margin:4px 0 8px}
 @media (prefers-reduced-motion: reduce){.sheet,.sheet-bg{transition:none}}
-.durline{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 16px;margin:12px 0;font-size:15px;box-shadow:var(--shadow)}
-.durline select{margin-top:8px}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.checks.inline{background:none;border:0;box-shadow:none;padding:10px 0 0;margin:12px 0 0;border-top:1px solid var(--line);border-radius:0;font-size:13px}
-.checks.inline summary{font-weight:600;color:var(--accent)}
-.card .opt-head{margin-bottom:6px}
-.card > p{margin-bottom:8px}
 .loading{padding:48px 0;text-align:center;color:var(--muted)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--brand);margin:0 3px;animation:b 1s infinite alternate}
 .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
@@ -461,7 +454,7 @@ function downloadICS(i){
 }
 
 // ================= Rendering helpers =================
-function checkPanel(checks, inline){
+function checkPanel(checks){
   if(!checks) return '';
   const rows=checks.map(c=>{
     let mark = c.pass ? '✓ Passed' : '✗ Failed';
@@ -469,7 +462,7 @@ function checkPanel(checks, inline){
     return `<li>${esc(mark)}: ${esc(c.label)}</li>`;
   }).join('');
   const passed=checks.filter(c=>c.pass).length;
-  return `<details class="checks${inline?' inline':''}"><summary>✓ ${passed} of ${checks.length} quality checks passed${inline?'':' (tap to see)'}</summary><ul>${rows}</ul><div class="muted small">Checked by fixed rules on every AI response. If a check fails, Plan B shows a safe fallback instead. Dates and Groww rules never come from the AI.</div></details>`;
+  return `<details class="checks"><summary>✓ Quality checks: ${passed} of ${checks.length} passed (tap to see)</summary><ul>${rows}</ul><div class="muted small">Checked by fixed rules on every AI response. If a check fails, Plan B shows a safe fallback instead. Dates and Groww rules never come from the AI.</div></details>`;
 }
 // Display-only: show a summary as bullet points, one per sentence. The AI prompt and its output are unchanged.
 function sentences(text){ return String(text||'').split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map(x=>x.trim()).filter(Boolean); }
@@ -691,33 +684,34 @@ function optionCard(k, c, num, total){
   const n=S.tm.nonpay; const mine=isPlanMatch(k);
   const tag = `<div class="eyebrow"><span class="optno">Option ${num} of ${total}</span>${mine ? '<span class="tag">Your Plan B</span>' : ''}</div>`;
   const late = `<p class="muted small">This instalment's cut-off has passed, so a request made now applies to the one after. If the money isn't there on the instalment date, the payment may fail; Pay Now is then available for 2 working days.</p>`;
-  const dueLine = (verb, d) => `<p class="due">${CAL_SVG}<span>${verb} by <strong>${esc(fmtDate(d))}</strong> · payment on ${esc(fmtDate(c.next))}</span></p>`;
-  const act = c.tooLate ? late : dueLine('Do this in Groww', c.actBy);
-  const cut = c.tooLate ? '' : `<p class="muted small">${esc(CUTOFF_NOTE)}</p>`;
-  const details = (inner) => `<details class="how"><summary>Details and how to do it in Groww</summary>${inner}</details>`;
-  const head = (h) => `<div class="opt-head">${icon(k)}<div><h2>${h}</h2></div></div>`;
+  const actLeaves = c.tooLate ? late : `<div class="leaves">${leaf(c.actBy,'Act by')}${leaf(c.next,'Next instalment')}</div><p class="muted small">${esc(CUTOFF_NOTE)}</p>`;
   const choose = `<button class="btn" onclick="choose('${k}')">Choose option ${num}</button>`;
   const D = {
-    pay_now: head('Pay this instalment with Pay Now') + `<p>Pays the failed instalment, so this month still counts.</p>
-      <p class="due">${CAL_SVG}<span>Pay in Groww by <strong>${esc(fmtDate(c.payBy))}</strong></span></p>`
-      + details(`<p>Pays the failed instalment, so this month still counts and nothing is skipped. Your regular SIP date doesn't change.</p><p class="muted small">Pay Now is available for 2 working days after a payment fails because of low balance. The date shown is a day earlier, to be safe.</p>${steps(['Open your Mutual Funds dashboard in Groww.','Find the Pay Now option on the missed instalment.','Pay it before the option disappears.'])}${link(HELP.missed,'Groww Help: pay a missed instalment')}`),
-    check_dashboard: head('Check your Groww dashboard first') + `<p>See whether Groww shows Pay Now for the missed instalment.</p>`
-      + details(`<p>If the payment failed because the balance was short, Groww shows a Pay Now option on your dashboard for 2 working days. If it failed because of an AutoPay or bank problem, Pay Now may not appear, and Groww Help explains how to fix AutoPay.</p><p>If this instalment can't be paid, this month counts as missed. Your regular SIP date doesn't change, and your next instalment is on ${esc(fmtLong(c.next))}.</p>${link(HELP.missed,'Groww Help: pay a missed instalment')}`),
-    skip: head("Skip this month's instalment") + `<p>Nothing is taken this month. Your SIP stays active.</p>${act}`
-      + (n===1?'<div class="note">One instalment is already skipped or missed. After this skip, one more in a row would cancel your SIP automatically, so the next one needs to go through.</div>':'')
-      + details(`<p>Nothing is taken for this instalment. Your SIP stays active and continues the month after. Groww charges nothing for skipping.</p>${cut}${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP.','Tap Skip next to the upcoming instalment and confirm.'])}${link(HELP.skip,'Groww Help: skip an instalment')}`),
-    skip_two: head('Skip this month and next month') + `<p>No payment for two months, then back to normal.</p>${act}<div class="note">A third skipped or missed instalment in a row would cancel your SIP automatically, so the instalment after these two needs to go through.</div>`
-      + details(`<p>Two instalments without a payment, then back to normal. Groww lets you skip one at a time, so you request the second skip after this month's instalment date has passed.</p>${cut}${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP and skip the upcoming instalment.','After that date passes, skip the next one the same way.'])}${link(HELP.skipLimits,'Groww Help: skipping limits')}`),
-    lower: head('Lower your amount for a while') + `<p>Keep your SIP running at a smaller amount you choose. Plan B never suggests an amount.</p>${act}`
-      + (n>=2?'<div class="note">Two instalments in a row are already skipped or missed. The next one needs to go through to keep your SIP active.</div>':'')
-      + details(`<p>The lowest amount your fund allows is shown in the app. You'll pick how long, and Plan B gives you the date to change it back. You'll change it back yourself in Groww; Plan B can't do it for you.</p>${cut}${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, enter the amount you choose, and save.'])}${link(HELP.edit,'Groww Help: change SIP amount or date')}`),
-    date: head('Move your SIP date') + `<p>Choose a new debit date in Groww, or keep yours and make sure the money is there.</p>${act}`
-      + details(`<p>Choose a new debit date in Groww, for example one after your salary usually arrives. Or keep your date and make sure the money is in your account before the instalment. It's your choice.</p>${cut}${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, pick the new date and save.'])}${link(HELP.edit,'Groww Help: change SIP date')}`),
-    break: head('Take a planned break, then restart') + `<p>Cancel now and restart on a date you choose. Money already invested stays invested.</p>`
-      + (c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<p class="due">${CAL_SVG}<span>Cancel in Groww by <strong>${esc(fmtDate(c.cancelBy))}</strong></span></p>`)
-      + details(`<p>Cancel the SIP now and start a new one on a date you choose. Money already invested stays invested. Plan B won't restart your SIP for you. Your first instalment after restarting comes at least 30 days after you restart.</p>${c.cancelLate?'':'<p class="muted small">Cancelling needs about 7 working days before an instalment; we\'ve added a day to be safe. Groww shows whether cancellation is available for your next instalment.</p>'}${steps(['In Groww, go to Mutual Funds, then SIPs.','Choose the SIP and tap Cancel SIP.','Pick a reason and confirm.'])}${link(HELP.cancel,'Groww Help: cancel a SIP')}`)
+    pay_now: `<div class="opt-head">${icon('pay_now')}<div><h2>Pay this instalment with Pay Now</h2></div></div><p>Pays the failed instalment, so this month still counts and nothing is skipped. Your regular SIP date doesn't change.</p>
+      <div class="leaves">${leaf(c.payBy,'Pay by')}</div><p class="muted small">Pay Now is available for 2 working days after a payment fails because of low balance. The date shown is a day earlier, to be safe.</p>
+      ${howTo(steps(['Open your Mutual Funds dashboard in Groww.','Find the Pay Now option on the missed instalment.','Pay it before the option disappears.']), link(HELP.missed,'Groww Help: pay a missed instalment'))}`,
+    check_dashboard: `<div class="opt-head">${icon('check_dashboard')}<div><h2>Check your Groww dashboard first</h2></div></div><p>If the payment failed because the balance was short, Groww shows a Pay Now option on your dashboard for 2 working days. If it failed because of an AutoPay or bank problem, Pay Now may not appear, and Groww Help explains how to fix AutoPay.</p>
+      <p>If this instalment can't be paid, this month counts as missed. Your regular SIP date doesn't change, and your next instalment is on ${esc(fmtLong(c.next))}.</p>
+      ${howTo('', link(HELP.missed,'Groww Help: pay a missed instalment'))}`,
+    skip: `<div class="opt-head">${icon('skip')}<div><h2>Skip this month's instalment</h2></div></div><p>Nothing is taken for this instalment. Your SIP stays active and continues the month after. Groww charges nothing for skipping.</p>
+      ${actLeaves}${n===1?'<div class="note">One instalment is already skipped or missed. After this skip, one more in a row would cancel your SIP automatically, so the next one needs to go through.</div>':''}
+      ${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP.','Tap Skip next to the upcoming instalment and confirm.']), link(HELP.skip,'Groww Help: skip an instalment'))}`,
+    skip_two: `<div class="opt-head">${icon('skip_two')}<div><h2>Skip this month and next month</h2></div></div><p>Two instalments without a payment, then back to normal. Groww lets you skip one at a time, so you request the second skip after this month's instalment date has passed.</p>
+      ${actLeaves}<div class="note">A third skipped or missed instalment in a row would cancel your SIP automatically, so the instalment after these two needs to go through.</div>
+      ${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP and skip the upcoming instalment.','After that date passes, skip the next one the same way.']), link(HELP.skipLimits,'Groww Help: skipping limits'))}`,
+    lower: `<div class="opt-head">${icon('lower')}<div><h2>Lower your amount for a while</h2></div></div><p>Your SIP keeps running at a smaller amount that you choose. Plan B never suggests an amount; the lowest amount your fund allows is shown in the app. You'll pick how long, and Plan B gives you the date to change it back. You'll change it back yourself in Groww; Plan B can't do it for you.</p>
+      ${actLeaves}${n>=2?'<div class="note">Two instalments in a row are already skipped or missed. The next one needs to go through to keep your SIP active.</div>':''}
+      ${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, enter the amount you choose, and save.']), link(HELP.edit,'Groww Help: change SIP amount or date'))}`,
+    date: `<div class="opt-head">${icon('date')}<div><h2>Move your SIP date</h2></div></div><p>Choose a new debit date in Groww, for example one after your salary usually arrives. Or keep your date and make sure the money is in your account before the instalment. It's your choice.</p>
+      ${actLeaves}${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, pick the new date and save.']), link(HELP.edit,'Groww Help: change SIP date'))}`,
+    break: `<div class="opt-head">${icon('break')}<div><h2>Take a planned break, then restart</h2></div></div><p>Cancel the SIP now and start a new one on a date you choose. Money already invested stays invested. Plan B won't restart your SIP for you. Your first instalment after restarting comes at least 30 days after you restart.</p>
+      ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe. Groww shows whether cancellation is available for your next instalment.</p>`}
+      ${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Choose the SIP and tap Cancel SIP.','Pick a reason and confirm.']), link(HELP.cancel,'Groww Help: cancel a SIP'))}`
   };
-  return `<div class="card ${mine?'mine':''}" id="opt${num}">${tag}${D[k]}${choose}</div>`;
+  // Keep the card short: the cut-off note moves inside "How to do it in Groww".
+  let body=D[k]; const cutP=`<p class="muted small">${esc(CUTOFF_NOTE)}</p>`;
+  if(body.includes(cutP) && body.includes('</summary>')){ body=body.replace(cutP,'').replace('</summary>','</summary>'+cutP); }
+  return `<div class="card ${mine?'mine':''}" id="opt${num}" style="scroll-margin-top:90px">${tag}${body}${choose}</div>`;
 }
 
 SCREENS.options = () => {
@@ -726,26 +720,26 @@ SCREENS.options = () => {
   if(r.plan_b_fit && ['fits','partly','does_not_fit'].includes(r.plan_b_fit) && r.plan_b_fit_reason){
     fit = `<div class="who" style="margin-top:12px">How your Plan B fits (AI)</div><div>${esc(fillText(r.plan_b_fit_reason))}</div>`;
   }
-  // One AI card: what Plan B understood, how the Plan B fits, and the visible quality checks.
-  const aiCard = (r.reflection || fit) ? `<div class="ai">${r.reflection ? `<div class="who">What Plan B understood (AI)</div><div>${esc(fillText(r.reflection))}</div>` : ''}${fit}${checkPanel(S.tm.checks,true)}</div>` : '';
   const blocked = (S.tm.nonpay>=2) ? `<div class="note">Two instalments in a row are already skipped or missed. One more in a row would cancel your SIP automatically, so skipping isn't offered here. ${link(HELP.skipLimits,'Groww Help')}</div>` : '';
   const planBlocked = (S.tm.nonpay>=2 && planPref()==='skip') ? `<p class="muted small">Your Plan B was to skip, but a skip now would cancel your SIP, so Plan B is showing other options.</p>` : '';
   const unsure = S.tm.nonpayUnsure ? `<div class="note">You weren't sure how many instalments in a row were skipped or missed, so Plan B assumes 2 to be safe. To check: in Groww, go to Mutual Funds, then SIPs, and open your SIP to see recent instalments.</div>` : '';
   const dur = S.tm.duration || 'unknown';
-  // Duration as one line; the dropdown opens on "Change".
-  const durLine = `<div class="durline"><span>${S.tm.checks ? 'Plan B thinks money is tight for:' : 'Money is tight for:'} <strong>${esc(DURATION[dur]||'Not sure')}</strong></span>
-    <button type="button" class="linkbtn" style="margin:0" onclick="const b=document.getElementById('durBox');b.hidden=!b.hidden;if(!b.hidden)document.getElementById('dur').focus()" aria-controls="durBox">Change</button>
-    <div id="durBox" hidden style="flex-basis:100%"><label class="sr" for="dur">How long do you expect money to be tight?</label><select id="dur" onchange="setDuration(this.value)">${Object.entries(DURATION).map(([v,w])=>`<option value="${v}" ${dur===v?'selected':''}>${w}</option>`).join('')}</select><p class="muted small" style="margin:6px 0 0">The options below update when you change this.</p></div></div>`;
+  const durSel = `<div class="card"><label class="f" for="dur" style="margin-top:0">How long do you expect money to be tight?</label>
+    <select id="dur" onchange="setDuration(this.value)">${Object.entries(DURATION).map(([v,w])=>`<option value="${v}" ${dur===v?'selected':''}>${w}</option>`).join('')}</select>
+    <p class="muted small" style="margin:8px 0 0">${S.tm.checks ? "Plan B's guess from what you wrote. Change it if it's wrong, and the options below update." : 'Choose the closest answer, and the options below update.'}</p></div>`;
   const total=opts.length;
+  const overview = `<ol class="overview">${opts.map((k,i)=>`<li><a href="#opt${i+1}" onclick="event.preventDefault();document.getElementById('opt${i+1}').scrollIntoView({behavior:'smooth',block:'start'})"><span class="num">${i+1}</span><span class="t">${esc(OPT_TITLE[k])}</span>${isPlanMatch(k)?'<span class="mini">Your Plan B</span>':''}</a></li>`).join('')}</ol>`;
   return `
   <h1>You have ${total} option${total===1?'':'s'} this month</h1>
   <p class="muted">Pick the one that suits you. You'll make the change yourself in the Groww app.</p>
   ${piiBanner(S.tm.pii)}
-  ${aiCard}
-  ${durLine}
+  ${(r.reflection || fit) ? `<div class="ai">${r.reflection ? `<div class="who">What Plan B understood (AI)</div><div>${esc(fillText(r.reflection))}</div>` : ''}${fit}</div>` : ''}
+  ${checkPanel(S.tm.checks)}
+  ${durSel}
   ${unsure}${blocked}${planBlocked}
+  <div class="section-h">Your options</div>
   ${opts.map((k,i)=>optionCard(k,c,i+1,total)).join('')}
-  <p class="muted small">Dates come from fixed rules, not the AI. Confirm them in Groww.</p>
+  <p class="muted small">${esc(SOURCE_NOTE)}</p>
   <button class="btn secondary" onclick="restart()">Start over</button>`;
 };
 
