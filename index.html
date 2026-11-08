@@ -8,8 +8,28 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
-// MINT switches themes with html[data-theme=dark]; follow the device setting.
-try{ if(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.setAttribute('data-theme','dark'); }catch(e){}
+// MINT switches themes with html[data-theme=dark]. Use the person's saved choice if there is one, otherwise follow the device setting.
+(function(){
+  var saved=null;
+  try{ saved=localStorage.getItem('planb-theme'); }catch(e){}
+  var dark = saved ? saved==='dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  if(dark) document.documentElement.setAttribute('data-theme','dark');
+})();
+function syncThemeButton(){
+  var b=document.getElementById('themeBtn'); if(!b) return;
+  var dark=document.documentElement.getAttribute('data-theme')==='dark';
+  b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  b.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  b.querySelector('.sun').style.display = dark ? 'block' : 'none';
+  b.querySelector('.moon').style.display = dark ? 'none' : 'block';
+}
+function toggleTheme(){
+  var el=document.documentElement, dark=el.getAttribute('data-theme')==='dark';
+  if(dark) el.removeAttribute('data-theme'); else el.setAttribute('data-theme','dark');
+  try{ localStorage.setItem('planb-theme', dark ? 'light' : 'dark'); }catch(e){}
+  syncThemeButton();
+}
+document.addEventListener('DOMContentLoaded', syncThemeButton);
 </script>
 <style>
 /* Colour tokens from Groww's MINT design system (@groww-tech/mint-css 0.4.0, MIT License, Copyright (c) 2023 Groww).
@@ -31,13 +51,16 @@ html{
   --warn-bg:#fff5e0;       /* yellow100 : background-warning-subtle */
   --warn-bar:#ffb61b;      /* yellow500 */
   --warn-ink:#44475b;
+  --err-bg:#fdecec;        /* errors only: red */
+  --err-bar:#d93025;
+  --err-ink:#a1251b;
   --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(68,71,91,.08);
 }
 html[data-theme=dark]{
   color-scheme: dark;
   --bg:#121212; --surface:#1b1b1b; --surface-2:#252525; --ink:#f8f8f8; --muted:#b8b8b8; --line:#2e2e2e;
   --brand:#04b488; --accent:#46d5a7; --on-accent:#121212; --accent-soft:#0f251d; --tag-bg:#0c2e22; --tag-ink:#a7f2d4;
-  --warn-bg:#46391d; --warn-bar:#e7a61a; --warn-ink:#f8f8f8; --shadow:none;
+  --warn-bg:#46391d; --warn-bar:#e7a61a; --warn-ink:#f8f8f8; --err-bg:#3d1f1d; --err-bar:#f2726a; --err-ink:#ffc9c3; --shadow:none;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -52,6 +75,10 @@ body{background:var(--bg);color:var(--ink);font-family:"Noto Sans",system-ui,-ap
 .mark svg{width:20px;height:20px}
 .pill{font-size:12px;font-weight:500;color:var(--tag-ink);background:var(--tag-bg);border-radius:999px;padding:2px 9px}
 .stage{font-size:13px;color:var(--muted)}
+.appbar .right{display:flex;align-items:center;gap:10px}
+.theme-btn{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.theme-btn svg{width:20px;height:20px}
+.theme-btn:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
 .progress{height:4px;background:var(--surface-2);margin:12px -16px 0;overflow:hidden}
 .progress span{display:block;height:100%;background:var(--accent);transition:width .3s ease}
 /* Page */
@@ -93,10 +120,35 @@ textarea::placeholder{color:var(--muted)}
 .choice select{margin-top:10px;background:var(--surface);font-size:14px;padding:10px 12px}
 .group{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0;box-shadow:var(--shadow)}
 .group > label.f:first-child{margin-top:0}
+.group .qhead + .row label.f{margin-top:10px}
 .group > :last-child{margin-bottom:0}
 /* Notices */
 .note{background:var(--warn-bg);color:var(--warn-ink);border-radius:12px;padding:14px 16px;margin:14px 0;font-size:15px}
-.err{color:var(--warn-ink);background:var(--warn-bg);border-left:4px solid var(--warn-bar);border-radius:10px;padding:8px 12px;margin-top:10px;display:none}
+.err{color:var(--err-ink);background:var(--err-bg);border-left:4px solid var(--err-bar);border-radius:10px;padding:10px 12px 10px 38px;margin-top:10px;display:none;font-weight:500;position:relative}
+.alert{color:var(--err-ink);background:var(--err-bg);border-left:4px solid var(--err-bar);border-radius:12px;padding:12px 14px 12px 40px;margin:14px 0;font-size:15px;font-weight:500;position:relative}
+.err:before,.alert:before{content:"!";position:absolute;left:12px;top:11px;width:18px;height:18px;border-radius:50%;background:var(--err-bar);color:#fff;font-size:13px;font-weight:700;line-height:18px;text-align:center}
+.alert strong,.err strong{font-weight:700}
+/* Step label, path buttons, option overview, done */
+.qn{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:700;margin-right:8px;vertical-align:1px;flex:none}
+.qhead{display:flex;align-items:center;font-weight:600;font-size:15px;margin:0 0 4px}
+.steplabel{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.02em;margin:0 0 6px}
+.btn.path{flex-direction:column;gap:2px;padding:12px 16px;min-height:64px}
+.btn.path .sub{font-size:13px;font-weight:400;opacity:.9}
+.overview{list-style:none;padding:0;margin:12px 0 18px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.overview li{border-top:1px solid var(--line)}
+.overview li:first-child{border-top:0}
+.overview a{display:flex;align-items:center;gap:12px;padding:14px 16px;color:var(--ink);text-decoration:none;font-weight:600}
+.overview .num{flex:none;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:14px;font-weight:700}
+.overview .t{flex:1}
+.overview .mini{font-size:11px;font-weight:600;background:var(--tag-bg);color:var(--tag-ink);border-radius:999px;padding:2px 8px;white-space:nowrap}
+.section-h{font-size:15px;font-weight:600;color:var(--muted);margin:22px 0 4px}
+.eyebrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.eyebrow .optno{font-size:13px;font-weight:700;color:var(--accent)}
+.eyebrow .tag{margin:0}
+ul.bul{margin:4px 0 0;padding-left:20px}
+ul.bul li{margin:4px 0}
+.added{display:flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--ink);border-radius:12px;padding:12px 14px;margin-top:10px;font-weight:600}
+.added .ok{width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:13px;flex:none}
 /* AI blocks: white card, green left border, labelled (AI) */
 .ai{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:14px;padding:14px 16px;margin:12px 0;box-shadow:var(--shadow)}
 .ai .who{font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px}
@@ -130,7 +182,9 @@ a{color:var(--accent);font-weight:500}
 .home-tiles{display:flex;gap:10px;margin:0 0 16px}
 .home-tiles .leaf{width:auto;flex:1;margin:0}
 .hero{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;margin:0 0 12px;box-shadow:var(--shadow)}
-.hero .ico{border-radius:50%;margin-bottom:10px}
+.hero-head{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px}
+.hero-head .ico{border-radius:50%;margin-top:2px}
+.hero-head h1{margin:0;font-size:24px}
 .hero h1{margin-top:0}
 .points{list-style:none;padding:0;margin:0 0 6px}
 .points li{display:flex;gap:14px;align-items:flex-start;margin:10px 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
@@ -147,7 +201,11 @@ a{color:var(--accent);font-weight:500}
   <header class="appbar">
     <div class="rowtop">
       <div class="title"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h11"/><path d="M11 6l6 6-6 6"/><path d="M20 5v14"/></svg></span>Plan B <span class="pill">Concept</span></div>
-      <div class="stage" id="stage"></div>
+      <div class="right"><div class="stage" id="stage"></div>
+        <button type="button" class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Switch to dark mode">
+          <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+        </button></div>
     </div>
     <div class="progress" id="progressWrap" aria-hidden="true"><span id="progress" style="width:0%"></span></div>
   </header>
@@ -223,7 +281,7 @@ const ICONS = {
   plan:'<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17"/><path d="M8 14.5l2.5 2.5L16 12"/>',
   shield:'<path d="M12 3.5l7 3v5.5c0 4-3 7.2-7 8.5-4-1.3-7-4.5-7-8.5V6.5z"/>',
   back:'<path d="M9 7l-5 5 5 5"/><path d="M4 12h11a5 5 0 010 10"/>',
-  heart:'<path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z"/>'
+  route:'<path d="M12 22v-9"/><path d="M12 13L5 5"/><path d="M12 13l7-8"/><path d="M4.5 10.5V4.5h6"/><path d="M19.5 10.5V4.5h-6"/>'
 };
 function icon(name){ return `<span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||ICONS.plan}</svg></span>`; }
 function howTo(stepsHtml, linkHtml){ return `<details class="how"><summary>How to do it in Groww</summary>${stepsHtml}${linkHtml||''}</details>`; }
@@ -236,7 +294,7 @@ function clashCheck(sip, sal, rel){
   const after = ((sip - sal) % 30 + 30) % 30;
   const before = ((sal - sip) % 30 + 30) % 30;
   if(after===0) return {flag:true, why:'Your SIP is debited on the same day your salary arrives. If the salary is even a little late, the payment can fail.'};
-  if(before>=1 && before<=7) return {flag:true, why:'Your SIP is debited in the week before your salary arrives, when your account is usually at its lowest.'};
+  if(before>=1 && before<=7) return {flag:true, why:'Your SIP is debited in the week before your salary usually arrives.'};
   if(rel!=='always' && after<=5) return {flag:true, why:'Your salary is sometimes late, and your SIP is debited within five days after it usually arrives.'};
   return {flag:false};
 }
@@ -350,8 +408,11 @@ function reminderBtn(title, date, desc, label){
   const p=n=>String(n).padStart(2,'0');
   const ds=d=>`${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}`;
   const g=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${ds(date)}/${ds(addDays(date,1))}&details=${encodeURIComponent(desc)}`;
-  return `<div class="row"><a class="btn secondary" href="${g}" target="_blank" rel="noopener">${esc(label)} (Google Calendar)</a><button class="btn secondary" onclick="downloadICS(${i})">Other calendar</button></div>`;
+  const key=title+'|'+date.toDateString();
+  if(S.added && S.added[key]) return `<div class="added"><span class="ok" aria-hidden="true">✓</span><span>Reminder added: ${esc(title)}</span></div>`;
+  return `<div class="row"><a class="btn secondary" href="${g}" target="_blank" rel="noopener" onclick="markAdded('${encodeURIComponent(key)}')">${esc(label)} (Google Calendar)</a><button class="btn secondary" onclick="downloadICS(${i});markAdded('${encodeURIComponent(key)}')">Other calendar</button></div>`;
 }
+function markAdded(k){ S.added=S.added||{}; S.added[decodeURIComponent(k)]=true; setTimeout(render,50); }
 function downloadICS(i){
   const r=S.reminders[i]; if(!r) return;
   const p=n=>String(n).padStart(2,'0');
@@ -376,14 +437,22 @@ function checkPanel(checks){
   const passed=checks.filter(c=>c.pass).length;
   return `<details class="checks"><summary>✓ Quality checks: ${passed} of ${checks.length} passed (tap to see)</summary><ul>${rows}</ul><div class="muted small">Checked by fixed rules on every AI response. If a check fails, Plan B shows a safe fallback instead. Dates and Groww rules never come from the AI.</div></details>`;
 }
+// Display-only: show a summary as bullet points, one per sentence. The AI prompt and its output are unchanged.
+function sentences(text){ return String(text||'').split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map(x=>x.trim()).filter(Boolean); }
+function bullets(text){ const p=sentences(text); return p.length>1 ? `<ul class="bul">${p.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>` : esc(text); }
+function aiBullets(text, who){
+  if(!text) return '';
+  return `<div class="ai"><div class="who">${esc(who)}</div>${bullets(fillText(text))}</div>`;
+}
 function aiBlock(text, who){
   if(!text) return '';
   return `<div class="ai"><div class="who">${esc(who||'What Plan B understood (AI)')}</div><div>${esc(fillText(text))}</div></div>`;
 }
-function piiBanner(on){ return on ? `<div class="note">Plan B removed what looked like a PAN, account or phone number before reading your message. Please don't share these here.</div>` : ''; }
+function piiBanner(on){ return on ? `<div class="alert" role="alert">Plan B removed what looked like a PAN, account or phone number before reading your message. Please don't share these here.</div>` : ''; }
 function loading(msg){ document.getElementById('app').innerHTML=`<div class="loading"><div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><p>${esc(msg)}</p></div>`; }
 function showErr(msg){ const e=document.getElementById('err'); if(e){ e.textContent=msg; e.style.display='block'; } }
 function go(screen){
+  if(screen==='done') S.screenFrom=S.screen;
   S.screen=screen; render(); window.scrollTo(0,0);
   const app=document.getElementById('app'); if(app) app.focus({preventScroll:true});
 }
@@ -392,22 +461,19 @@ function go(screen){
 const SCREENS = {};
 
 SCREENS.home = () => {
-  const t=today(), a=addDays(t,10), b=addDays(t,40);
   return `
-  <div class="home-tiles">${leaf(t,'Plan today')}${leaf(a,'Act by')}${leaf(b,'Back on')}</div>
   <div class="hero">
-    ${icon('heart')}
-    <h1>Decide now what you'll do in a tight month</h1>
-    <p class="muted" style="margin:0">Some months are tighter than others. Plan B helps you agree with yourself, ahead of time, what happens to your SIP when money is short, so a short break doesn't quietly become a long one.</p>
+    <div class="hero-head">${icon('route')}<h1>Set a backup plan for your SIP</h1></div>
+    <p class="muted" style="margin:0">Choose now what happens to your SIP in a month when money is short, so a short break doesn't quietly become a long one. Takes about 2 minutes.</p>
   </div>
   <ul class="points">
     <li>${icon('plan')}<span><strong>Pick your Plan B while things are calm.</strong><br><span class="muted small">Skip a month, lower the amount, or decide later.</span></span></li>
     <li>${icon('date')}<span><strong>Get the dates that matter.</strong><br><span class="muted small">When to act before the cut-off, and when your SIP is back on.</span></span></li>
-    <li>${icon('shield')}<span><strong>No advice, no pressure.</strong><br><span class="muted small">Plan B never recommends funds and can't see your account. Please don't enter account numbers, PAN or balances.</span></span></li>
+    <li>${icon('shield')}<span><strong>No advice, no pressure.</strong><br><span class="muted small">Plan B never recommends funds and can't see your account.</span></span></li>
   </ul>
   <div class="actions">
-    <button class="btn" onclick="go('setup')">Set up my Plan B</button>
-    <button class="btn secondary" onclick="startTight()">I'm in a tight month now</button>
+    <button class="btn path" onclick="go('setup')">Set up my Plan B<span class="sub">Money is fine right now. Decide ahead, in 2 minutes.</span></button>
+    <button class="btn secondary path" onclick="startTight()">I'm in a tight month now<span class="sub">Your SIP is due soon and money is short.</span></button>
   </div>`;
 };
 
@@ -422,20 +488,20 @@ SCREENS.setup = () => {
   return `
   <h1>Tell Plan B about your month</h1>
   <p class="muted">This takes about two minutes. Plan B uses it to spot dates that clash and to make your Plan B fit your month.</p>
-  <div class="group"><div class="row">
-    <div><label class="f" for="sipDay">Your SIP date</label><select id="sipDay"><option value="">Choose</option>${daysOptions(28, st.sipDay)}</select></div>
-    <div><label class="f" for="salDay">Salary date</label><select id="salDay"><option value="">Choose</option>${daysOptions(31, st.salaryDay)}</select></div>
+  <div class="group"><div class="qhead"><span class="qn" aria-hidden="true">1</span>Your SIP and salary dates</div><div class="row">
+    <div><label class="f" for="sipDay">Your current SIP date</label><select id="sipDay"><option value="">Choose</option>${daysOptions(28, st.sipDay)}</select></div>
+    <div><label class="f" for="salDay">Your salary date</label><select id="salDay"><option value="">Choose</option>${daysOptions(31, st.salaryDay)}</select></div>
   </div>
   <p class="muted small">Groww lets you pick a SIP date from the 1st to the 28th, so those are the dates shown here.</p></div>
-  <div class="group"><label class="f">How reliable is your salary date?</label>
+  <div class="group"><label class="f"><span class="qn" aria-hidden="true">2</span>How reliable is your salary date?</label>
   ${Object.entries({always:'Always on time', late:'Sometimes late', varies:'It varies'}).map(([v,w])=>`
     <label class="choice"><input type="radio" name="rel" value="${v}" ${st.reliability===v?'checked':''}><span>${w}</span></label>`).join('')}</div>
-  <div class="group"><label class="f">Big regular payments (tick any)</label>
+  <div class="group"><label class="f"><span class="qn" aria-hidden="true">3</span>Big regular payments (tick any)</label>
   <p class="muted small">Only timing, never amounts.</p>
   ${payRows}</div>
-  <div class="group"><label class="f" for="upcoming">Anything coming up in the next few months? (optional)</label>
-  <textarea id="upcoming" placeholder="For example: switching jobs soon, a family wedding, moving house">${esc(st.upcoming)}</textarea></div>
-  <div class="err" id="err"></div>
+  <div class="group"><label class="f" for="upcoming"><span class="qn" aria-hidden="true">4</span>Anything coming up in the next few months? (optional)</label>
+  <textarea id="upcoming" placeholder="For example: switching jobs soon, a family wedding, moving house" aria-describedby="upHint">${esc(st.upcoming)}</textarea><p class="muted small" id="upHint" style="margin:6px 0 0">Don't include PAN or account numbers. Plan B doesn't need them.</p></div>
+  <div class="err" id="err" role="alert"></div>
   <div class="actions"><button class="btn" onclick="saveSetup()">Continue</button>
   <button class="btn secondary" onclick="go('home')">Back</button></div>`;
 };
@@ -444,18 +510,22 @@ SCREENS.summary = () => {
   const st=S.setup; const c=st.clash; let clashHtml='';
   if(c && c.flag){
     const next=nextDebit(st.sipDay, today()); const actBy=subWorkingDays(next,3); const late=actBy<today();
-    clashHtml=`<div class="card"><h2>Your SIP date and salary date may clash</h2><p>${esc(c.why)}</p>
-      <p>Moving your SIP to a few days after your salary usually arrives can prevent a failed payment.</p>
-      <div class="leaves">${leaf(actBy,'Change by')}${leaf(next,'Next instalment')}</div>
+    clashHtml=`<div class="card"><h2>Your SIP date is close to your salary date</h2><p>${esc(c.why)}</p>
+      <p style="margin-bottom:4px">To help your instalment go through, you can either:</p>
+      <ul class="bul" style="margin-bottom:10px"><li>move your SIP date to after your salary usually arrives, or</li><li>make sure the money is in your account before each instalment date.</li></ul>
+      <p>Both work. It's your choice.</p>
+      <div class="leaves">${leaf(actBy,'Change date by')}${leaf(next,'Next instalment')}</div>
       <p class="muted small">${late ? "This instalment's cut-off has passed, so a change made now applies from the one after." : esc(CUTOFF_NOTE)}</p>
+      <p class="small" style="margin:10px 0 0"><strong>To move your SIP date:</strong></p>
       ${steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, pick the new date and save.'])}
       ${link(HELP.edit,'Groww Help: change SIP date or amount')}</div>`;
   }
   return `
-  <h1>Is this your month?</h1>
+  <h1>Check your details</h1>
+  <p class="muted">Here's what Plan B understood. Is it right?</p>
   ${st.summaryNote ? `<div class="note">${esc(st.summaryNote)}</div>` : ''}
   ${piiBanner(st.pii)}
-  <div id="sumView">${st.summaryAI ? aiBlock(st.summary,'Your month, as Plan B understood it (AI)') : `<div class="card">${esc(st.summary)}</div>`}</div>
+  <div id="sumView">${st.summaryAI ? aiBullets(st.summary,'Your month, as Plan B understood it (AI)') : `<div class="card">${bullets(st.summary)}</div>`}</div>
   ${st.summaryAI ? checkPanel(st.summaryChecks) : '<p class="muted small">No AI was used for this summary.</p>'}
   ${clashHtml}
   <div class="actions"><button class="btn" onclick="go('rule')">Yes, this is right</button>
@@ -472,8 +542,9 @@ SCREENS.rule = () => {
     <select id="months" aria-label="For up to how many months">${[1,2,3].map(m=>`<option value="${m}" ${p.months==m?'selected':''}>For up to ${m} month${m>1?'s':''}</option>`).join('')}</select></span></label>
   <label class="choice"><input type="radio" name="rule" value="skip_then_decide" ${p.rule==='skip_then_decide'?'checked':''}><span><strong>Skip first, then decide</strong><br><span class="muted small">Decide before the next instalment whether to skip again, lower the amount or continue.</span></span></label>
   <div class="note">Good to know: Groww lets you skip one instalment at a time, and cancels a SIP automatically after 3 skipped or missed instalments in a row. ${link(HELP.skipLimits,'Groww Help')}</div>
-  <div class="err" id="err"></div>
-  <div class="actions"><button class="btn" onclick="saveRule()">Save my Plan B</button></div>`;
+  <div class="err" id="err" role="alert"></div>
+  <div class="actions"><button class="btn" onclick="saveRule()">Save my Plan B</button>
+  <button class="btn secondary" onclick="go('summary')">Back</button></div>`;
 };
 
 SCREENS.saved = () => `
@@ -485,27 +556,31 @@ SCREENS.saved = () => `
 
 SCREENS.entry = () => {
   const t=S.tm; const needDates=!S.setup.sipDay;
+  let qn=0; const Q=()=>`<span class="qn" aria-hidden="true">${++qn}</span>`;
   return `
   <h1>Demo: choose how you arrived here</h1>
   <p class="muted">In the real app, Plan B would open at one of these moments. Pick one to try it.</p>
+  <div class="qhead" style="margin-top:16px">${Q()}How did you get here?</div>
   ${Object.entries(ENTRY).map(([k,w])=>`<label class="choice"><input type="radio" name="entry" value="${k}" ${t.entry===k?'checked':''} onchange="readNonpay(); S.tm.entry=this.value; render()"><span>${esc(ENTRY_LABEL[k])}</span></label>`).join('')}
-  ${t.entry==='failed' ? `<label class="f" for="fw">When did it fail?</label><select id="fw"><option value="today" ${t.failedWhen==='today'?'selected':''}>Today</option><option value="yesterday" ${t.failedWhen==='yesterday'?'selected':''}>Yesterday</option><option value="earlier" ${t.failedWhen==='earlier'?'selected':''}>Earlier than that</option></select>
-  <label class="f" for="fr">Why did it fail?</label><select id="fr"><option value="money" ${t.failReason==='money'?'selected':''}>The money wasn't in my account</option><option value="autopay" ${t.failReason==='autopay'?'selected':''}>An AutoPay or bank problem</option><option value="unsure" ${t.failReason==='unsure'?'selected':''}>Not sure</option></select>` : ''}
-  <label class="f" for="np">How many instalments in a row have been skipped or missed so far${t.entry==='failed'?', including this failed one':''}?</label>
+  ${t.entry==='failed' ? `<label class="f" for="fw">${Q()}When did it fail?</label><select id="fw"><option value="today" ${t.failedWhen==='today'?'selected':''}>Today</option><option value="yesterday" ${t.failedWhen==='yesterday'?'selected':''}>Yesterday</option><option value="earlier" ${t.failedWhen==='earlier'?'selected':''}>Earlier than that</option></select>
+  <label class="f" for="fr">${Q()}Why did it fail?</label><select id="fr"><option value="money" ${t.failReason==='money'?'selected':''}>The money wasn't in my account</option><option value="autopay" ${t.failReason==='autopay'?'selected':''}>An AutoPay or bank problem</option><option value="unsure" ${t.failReason==='unsure'?'selected':''}>Not sure</option></select>` : ''}
+  <label class="f" for="np">${Q()}How many instalments in a row have been skipped or missed so far${t.entry==='failed'?', including this failed one':''}?</label>
   <select id="np">${[0,1,2].map(n=>`<option value="${n}" ${(!t.nonpayUnsure && t.nonpay==n)?'selected':''}>${n}</option>`).join('')}<option value="unsure" ${t.nonpayUnsure?'selected':''}>Not sure</option></select>
-  ${needDates ? `<div class="row"><div><label class="f" for="sipDay2">Your SIP date</label><select id="sipDay2"><option value="">Choose</option>${daysOptions(28,null)}</select></div><div><label class="f" for="salDay2">Salary date</label><select id="salDay2"><option value="">Choose</option>${daysOptions(31,null)}</select></div></div><p class="muted small">Groww lets you pick a SIP date from the 1st to the 28th, so those are the dates shown here.</p>` : ''}
-  <div class="err" id="err"></div>
+  ${needDates ? `<div class="qhead" style="margin-top:18px">${Q()}Your SIP and salary dates</div><div class="row"><div><label class="f" for="sipDay2" style="margin-top:8px">Your current SIP date</label><select id="sipDay2"><option value="">Choose</option>${daysOptions(28,null)}</select></div><div><label class="f" for="salDay2" style="margin-top:8px">Your salary date</label><select id="salDay2"><option value="">Choose</option>${daysOptions(31,null)}</select></div></div><p class="muted small">Groww lets you pick a SIP date from the 1st to the 28th, so those are the dates shown here.</p>` : ''}
+  <div class="err" id="err" role="alert"></div>
   <div class="actions"><button class="btn" onclick="saveEntry()">Continue</button></div>`;
 };
 
 SCREENS.describe = () => `
   <h1>What's going on this month?</h1>
-  <p class="muted">Tell Plan B in your own words. Short is fine. Please don't include account numbers, PAN or balances.</p>
+  <p class="muted">Tell Plan B in your own words. Short is fine.</p>
   ${S.plan ? `<div class="card small"><strong>Your Plan B:</strong> ${esc(planText())}</div>` : ''}
   <label class="f" for="sit">Your situation</label>
-  <textarea id="sit" placeholder="For example: my salary is late this month, or I have big hospital bills for a while">${esc(S.tm.text)}</textarea>
-  <div class="err" id="err"></div>
-  <div class="actions"><button class="btn" onclick="submitSituation()">Read my situation</button></div>`;
+  <textarea id="sit" aria-describedby="sitHint" placeholder="For example: my salary is late this month, or I have big hospital bills for a while">${esc(S.tm.text)}</textarea>
+  <p class="muted small" id="sitHint" style="margin-top:6px">Don't include PAN or account numbers. Plan B doesn't need them.</p>
+  <div class="err" id="err" role="alert"></div>
+  <div class="actions"><button class="btn" onclick="submitSituation()">Read my situation</button>
+  <button class="btn secondary" onclick="go('entry')">Back</button></div>`;
 
 SCREENS.followup = () => {
   const r=S.tm.result; const n=S.tm.followups.length+1;
@@ -514,12 +589,28 @@ SCREENS.followup = () => {
   ${piiBanner(S.tm.pii)}
   <div class="ai"><div class="who">Question ${n} of up to 2 (AI)</div><div>${esc(fillText(r.followup_question))}</div></div>
   <label class="f" for="fa">Your answer</label>
-  <textarea id="fa"></textarea>
-  <div class="err" id="err"></div>
+  <textarea id="fa" aria-describedby="faHint"></textarea>
+  <p class="muted small" id="faHint" style="margin-top:6px">Don't include PAN or account numbers. Plan B doesn't need them.</p>
+  <div class="err" id="err" role="alert"></div>
   <button class="btn" onclick="submitFollowup()">Continue</button>
   ${checkPanel(S.tm.checks)}`;
 };
 
+const DONE_LINE = {skip:'Skip one instalment, then continue', skip_two:'Skip two instalments, then continue', lower:'A smaller amount for a while, then back to your usual amount', pay_now:'Pay this instalment with Pay Now', check_dashboard:'Check your Groww dashboard for Pay Now', date:'Move your SIP date', break:'A planned break, then restart on a date you chose', stop:'Stop this SIP'};
+SCREENS.done = () => {
+  const k = S.screenFrom==='breakPlan' ? 'break' : (S.screenFrom==='stop' ? 'stop' : (S.tm && S.tm.choice));
+  const any = S.added && Object.keys(S.added).length>0;
+  return `
+  <div class="hero" style="text-align:center">
+    <div class="ico" style="margin:0 auto 10px;border-radius:50%">${ICONS && ICONS.plan ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>` : ''}</div>
+    <h1>You're all set</h1>
+    ${k && DONE_LINE[k] ? `<p><strong>Your plan:</strong> ${esc(DONE_LINE[k])}</p>` : ''}
+    <p class="muted small" style="margin:0">${any ? 'Your reminders are in your calendar. ' : ''}Any change is made by you in the Groww app. Plan B doesn't store anything about you.</p>
+  </div>
+  ${any ? '' : `<p class="muted small">You didn't add a reminder. You can go back and add one.</p>`}
+  <div class="actions"><button class="btn" onclick="restart()">Back to start</button>
+  <button class="btn secondary" onclick="go(S.screenFrom||'options')">Back to my plan</button></div>`;
+};
 SCREENS.boundary = () => `
   <h1>Just to check</h1>
   ${aiBlock(S.tm.result.reflection)}
@@ -528,12 +619,13 @@ SCREENS.boundary = () => `
   <button class="btn secondary" onclick="setBoundary('planned_break')">Take a break and restart later</button>
   ${checkPanel(S.tm.checks)}`;
 
-function optionCard(k, c){
+const OPT_TITLE = {pay_now:'Pay this instalment with Pay Now', check_dashboard:'Check your Groww dashboard first', skip:"Skip this month's instalment", skip_two:'Skip this month and next month', lower:'Lower your amount for a while', date:'Move your SIP date', break:'Take a planned break, then restart'};
+function optionCard(k, c, num, total){
   const n=S.tm.nonpay; const mine=isPlanMatch(k);
-  const tag = mine ? '<div class="tag">Your Plan B</div>' : '';
+  const tag = `<div class="eyebrow"><span class="optno">Option ${num} of ${total}</span>${mine ? '<span class="tag">Your Plan B</span>' : ''}</div>`;
   const late = `<p class="muted small">This instalment's cut-off has passed, so a request made now applies to the one after. If the money isn't there on the instalment date, the payment may fail; Pay Now is then available for 2 working days.</p>`;
   const actLeaves = c.tooLate ? late : `<div class="leaves">${leaf(c.actBy,'Act by')}${leaf(c.next,'Instalment date')}</div><p class="muted small">${esc(CUTOFF_NOTE)}</p>`;
-  const choose = `<button class="btn" onclick="choose('${k}')">Choose this</button>`;
+  const choose = `<button class="btn" onclick="choose('${k}')">Choose option ${num}</button>`;
   const D = {
     pay_now: `<div class="opt-head">${icon('pay_now')}<div><h2>Pay this instalment with Pay Now</h2></div></div><p>Pays the failed instalment, so this month still counts and nothing is skipped. Your regular SIP date doesn't change.</p>
       <div class="leaves">${leaf(c.payBy,'Pay by')}</div><p class="muted small">Pay Now is available for 2 working days after a payment fails because of low balance. The date shown is a day earlier, to be safe.</p>
@@ -548,15 +640,18 @@ function optionCard(k, c){
       ${actLeaves}<div class="note">A third skipped or missed instalment in a row would cancel your SIP automatically, so the instalment after these two needs to go through.</div>
       ${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP and skip the upcoming instalment.','After that date passes, skip the next one the same way.']), link(HELP.skipLimits,'Groww Help: skipping limits'))}`,
     lower: `<div class="opt-head">${icon('lower')}<div><h2>Lower your amount for a while</h2></div></div><p>Your SIP keeps running at a smaller amount that you choose. Plan B never suggests an amount; the lowest amount your fund allows is shown in the app. You'll pick how long, and Plan B gives you the date to change it back. You'll change it back yourself in Groww; Plan B can't do it for you.</p>
-      ${actLeaves}${n>=2?'<div class="note">Two instalments in a row are already skipped or missed. The next one needs to go through to keep your SIP active, so a smaller amount you can manage is the safer choice here.</div>':''}
+      ${actLeaves}${n>=2?'<div class="note">Two instalments in a row are already skipped or missed. The next one needs to go through to keep your SIP active.</div>':''}
       ${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, enter the amount you choose, and save.']), link(HELP.edit,'Groww Help: change SIP amount or date'))}`,
-    date: `<div class="opt-head">${icon('date')}<div><h2>Move your SIP date</h2></div></div><p>Move the debit to a few days after your salary usually arrives, so the money is there when the instalment is taken.</p>
+    date: `<div class="opt-head">${icon('date')}<div><h2>Move your SIP date</h2></div></div><p>Choose a new debit date in Groww, for example one after your salary usually arrives. Or keep your date and make sure the money is in your account before the instalment. It's your choice.</p>
       ${actLeaves}${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Tap your SIP, then Edit SIP.','Choose Edit amount & date, pick the new date and save.']), link(HELP.edit,'Groww Help: change SIP date'))}`,
     break: `<div class="opt-head">${icon('break')}<div><h2>Take a planned break, then restart</h2></div></div><p>Cancel the SIP now and start a new one on a date you choose. Money already invested stays invested. Plan B won't restart your SIP for you. Your first instalment after restarting comes at least 30 days after you restart.</p>
       ${c.cancelLate ? '<p class="muted small">Your next instalment is close, so it may still be deducted before the cancellation takes effect.</p>' : `<div class="leaves">${leaf(c.cancelBy,'Cancel by')}</div><p class="muted small">Cancelling needs about 7 working days before an instalment; we've added a day to be safe. Groww shows whether cancellation is available for your next instalment.</p>`}
       ${howTo(steps(['In Groww, go to Mutual Funds, then SIPs.','Choose the SIP and tap Cancel SIP.','Pick a reason and confirm.']), link(HELP.cancel,'Groww Help: cancel a SIP'))}`
   };
-  return `<div class="card ${mine?'mine':''}">${tag}${D[k]}${choose}</div>`;
+  // Keep the card short: the cut-off note moves inside "How to do it in Groww".
+  let body=D[k]; const cutP=`<p class="muted small">${esc(CUTOFF_NOTE)}</p>`;
+  if(body.includes(cutP) && body.includes('</summary>')){ body=body.replace(cutP,'').replace('</summary>','</summary>'+cutP); }
+  return `<div class="card ${mine?'mine':''}" id="opt${num}" style="scroll-margin-top:90px">${tag}${body}${choose}</div>`;
 }
 
 SCREENS.options = () => {
@@ -572,15 +667,21 @@ SCREENS.options = () => {
   const durSel = `<div class="card"><label class="f" for="dur" style="margin-top:0">How long do you expect money to be tight?</label>
     <select id="dur" onchange="setDuration(this.value)">${Object.entries(DURATION).map(([v,w])=>`<option value="${v}" ${dur===v?'selected':''}>${w}</option>`).join('')}</select>
     <p class="muted small" style="margin:8px 0 0">${S.tm.checks ? "Plan B's guess from what you wrote. Change it if it's wrong, and the options below update." : 'Choose the closest answer, and the options below update.'}</p></div>`;
+  const total=opts.length;
+  const overview = `<ol class="overview">${opts.map((k,i)=>`<li><a href="#opt${i+1}" onclick="event.preventDefault();document.getElementById('opt${i+1}').scrollIntoView({behavior:'smooth',block:'start'})"><span class="num">${i+1}</span><span class="t">${esc(OPT_TITLE[k])}</span>${isPlanMatch(k)?'<span class="mini">Your Plan B</span>':''}</a></li>`).join('')}</ol>`;
   return `
-  <h1>Here's what fits this month</h1>
+  <h1>You have ${total} option${total===1?'':'s'} this month</h1>
+  <p class="muted">Pick the one that suits you. You'll make the change yourself in the Groww app.</p>
   ${piiBanner(S.tm.pii)}
+  ${overview}
+  <div class="section-h">Why these options</div>
   ${aiBlock(r.reflection)}
   ${fit}
   ${checkPanel(S.tm.checks)}
   ${durSel}
   ${unsure}${blocked}${planBlocked}
-  ${opts.map(k=>optionCard(k,c)).join('')}
+  <div class="section-h">Your options</div>
+  ${opts.map((k,i)=>optionCard(k,c,i+1,total)).join('')}
   <p class="muted small">${esc(SOURCE_NOTE)}</p>
   <button class="btn secondary" onclick="restart()">Start over</button>`;
 };
@@ -629,12 +730,12 @@ SCREENS.close = () => {
   } else if(k==='date'){
     h=`<h1>Your plan: move your SIP date</h1>
       <div class="leaves">${c.tooLate?'':leaf(c.actBy,'Change by')}</div>
-      <p>Choose a date a few days after your salary usually arrives. After you save, the Groww app shows your next instalment date.</p>
+      <p>Pick the date that works for you. After you save, the Groww app shows your next instalment date.</p>
       ${c.tooLate?'':reminderBtn('Change my SIP date', c.actBy, 'Plan B reminder: change your SIP date in Groww today.', 'Add a reminder to change the date')}`;
   }
   return `${h}
-    <button class="btn secondary" onclick="go('options')">Back to my options</button>
-    <button class="btn secondary" onclick="restart()">Start over</button>`;
+    <div class="actions"><button class="btn" onclick="go('done')">Done</button>
+    <button class="btn secondary" onclick="go('options')">Back to my options</button></div>`;
 };
 
 SCREENS.breakPlan = () => {
@@ -665,7 +766,8 @@ SCREENS.breakPlan = () => {
     <label class="f" for="rd">Restart on</label>
     <input type="date" id="rd" min="${minStr}" value="${rs?`${rs.getFullYear()}-${p(rs.getMonth()+1)}-${p(rs.getDate())}`:''}" onchange="setRestart(this.value)">
     ${restartHtml}</div>
-  <button class="btn secondary" onclick="restart()">Start over</button>`;
+  <div class="actions"><button class="btn" onclick="go('done')">Done</button>
+  <button class="btn secondary" onclick="go('options')">Back to my options</button></div>`;
 };
 
 SCREENS.stop = () => {
@@ -681,7 +783,8 @@ SCREENS.stop = () => {
     <p>Money you've already invested stays invested. Cancelling only stops future instalments.</p>
     ${link(HELP.cancel,'Groww Help: cancel a SIP')}
   </div>
-  <button class="btn secondary" onclick="restart()">Start over</button>`;
+  <div class="actions"><button class="btn" onclick="go('done')">Done</button>
+  <button class="btn secondary" onclick="restart()">Start over</button></div>`;
 };
 
 SCREENS.fallback = () => {
@@ -713,16 +816,18 @@ SCREENS.fallback = () => {
 
 // ================= Actions =================
 function render(){
-  const stage = ['setup','summary','rule','saved'].includes(S.screen) ? 'Setting up' : (['home'].includes(S.screen) ? '' : 'Tight month');
+  const stage = ['setup','summary','rule','saved'].includes(S.screen) ? 'Setting up' : (['home','done'].includes(S.screen) ? '' : 'Tight month');
   document.getElementById('stage').textContent=stage;
-  const STEP={setup:1,summary:2,rule:3,saved:4,entry:1,describe:2,followup:2,boundary:2,options:3,close:4,breakPlan:4,stop:4,fallback:3};
+  // Setup has 3 steps; a tight month has 4. The optional follow-up question doesn't add a step.
+  const STEP={setup:[1,3],summary:[2,3],rule:[3,3],saved:[3,3,1],entry:[1,4],describe:[2,4],followup:[2,4],boundary:[2,4],options:[3,4],close:[4,4],breakPlan:[4,4],stop:[4,4],fallback:[3,4,1],done:[4,4,1]};
   const st=STEP[S.screen]; const bar=document.getElementById('progress');
   document.getElementById('progressWrap').style.visibility = st ? 'visible' : 'hidden';
-  if(bar) bar.style.width = st ? (st/4*100)+'%' : '0%';
-  document.getElementById('app').innerHTML = SCREENS[S.screen]();
+  if(bar) bar.style.width = st ? (st[0]/st[1]*100)+'%' : '0%';
+  const label = (st && !st[2]) ? `<div class="steplabel">Step ${st[0]} of ${st[1]}</div>` : '';
+  document.getElementById('app').innerHTML = label + SCREENS[S.screen]();
 }
 function startTight(){ S.tm=freshTM(); go('entry'); }
-function restart(){ S.tm=null; go(S.plan ? 'saved' : 'home'); }
+function restart(){ S.tm=null; S.added={}; S.screenFrom=null; go(S.plan ? 'saved' : 'home'); }
 
 async function saveSetup(){
   const g=id=>document.getElementById(id);
